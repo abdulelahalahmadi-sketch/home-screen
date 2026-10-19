@@ -1,0 +1,555 @@
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>شاشة البيت</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Reem+Kufi:wght@400;500;600&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600&family=Amiri+Quran&display=swap">
+<style>
+/* Layout: two columns on a Red Sea horizon. Start side = time & sky (clock, sun-path arc, prayers). End side = life (matches, weather). Footer = verse of the hour.
+   The whole palette follows the sky: night (Isha→Fajr), dawn/dusk, and day — switched automatically from today's prayer times. */
+:root{
+  color-scheme:dark;
+  --sky-1:#06141d; --sky-2:#0b2733; --sea:#0e3a44;
+  --ink:#eaf4f2; --muted:#8fb3b2; --line:rgba(143,179,178,.22);
+  --card:rgba(10,40,50,.55);
+  --sand:#e8c98f; --teal:#5fd3c6; --sun:#ffcf6b; --live:#ff6f8f;
+  --kufi:"Reem Kufi","IBM Plex Sans Arabic",system-ui,sans-serif;
+  --body:"IBM Plex Sans Arabic",system-ui,sans-serif;
+  --quran:"Amiri Quran","Amiri","Traditional Arabic",serif;
+  --r:clamp(14px,1.3vw,26px);
+}
+:root[data-sky="dawn"]{ --sky-1:#1a1d33; --sky-2:#5b4a63; --sea:#b4786a; --card:rgba(30,26,48,.5); --muted:#d2bfc4; --line:rgba(255,220,210,.22) }
+:root[data-sky="day"]{
+  color-scheme:light;
+  --sky-1:#cfe7ea; --sky-2:#f3ead8; --sea:#e9d8b6;
+  --ink:#11262c; --muted:#4f6b6f; --line:rgba(17,38,44,.14);
+  --card:rgba(255,255,255,.55); --sand:#a86a12; --teal:#0f7c78; --sun:#e08a12;
+}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{
+  margin:0;color:var(--ink);font-family:var(--body);overflow:hidden;
+  background:var(--sky-1);
+  font-size:clamp(14px,1.05vw,22px);
+  transition:background-color 2s;
+}
+body.idle{cursor:none}
+.sky{position:fixed;inset:0;background:linear-gradient(180deg,var(--sky-1) 0%,var(--sky-2) 62%,var(--sea) 100%);transition:opacity 2s;z-index:-2}
+.sky::after{content:"";position:absolute;inset:auto 0 0 0;height:22vh;background:repeating-linear-gradient(180deg,transparent 0 9px,rgba(255,255,255,.03) 9px 10px);mask:linear-gradient(transparent,#000)}
+.dim{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity 3s;z-index:50}
+.wrap{
+  height:100%;box-sizing:border-box;display:grid;grid-template-columns:1.15fr 1fr;grid-template-rows:1fr auto;
+  gap:clamp(14px,2.2vh,32px) clamp(18px,2.6vw,56px);
+  padding-block:clamp(16px,4vh,56px);
+  padding-left:max(clamp(16px,4vw,80px),env(safe-area-inset-left,0px));
+  padding-right:max(clamp(16px,4vw,80px),env(safe-area-inset-right,0px));
+  transition:transform 4s ease;
+}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);backdrop-filter:blur(10px)}
+.lbl{font-family:var(--kufi);color:var(--muted);font-size:.85em;letter-spacing:.02em}
+.num{font-variant-numeric:tabular-nums}
+
+/* ---- start column: time & sky ---- */
+.time-col{display:flex;flex-direction:column;justify-content:space-between;gap:clamp(10px,2vh,28px);min-width:0}
+.clock{font-family:var(--kufi);font-weight:400;font-size:clamp(70px,min(11vw,21vh),230px);line-height:.9;display:flex;align-items:baseline;gap:.12em}
+.clock small{font-size:.2em;color:var(--muted)}
+.dates{display:flex;flex-wrap:wrap;gap:.3em 1.1em;font-size:1.15em;font-weight:500}
+.dates .h{color:var(--sand)}
+.dates .r{color:var(--muted);font-weight:400}
+
+.arc-wrap{position:relative}
+.arc-wrap svg{width:100%;height:auto;display:block;overflow:visible}
+.arc-next{position:absolute;inset:auto 0 8% 0;text-align:center;display:flex;flex-direction:column;gap:.15em;align-items:center}
+.arc-next .n{font-family:var(--kufi);font-size:2.1em;line-height:1}
+.arc-next .l{font-size:1.05em}
+.arc-next .s{color:var(--muted);font-size:.8em}
+
+.prayers{display:grid;grid-template-columns:repeat(6,1fr);gap:.4em}
+.p{display:flex;flex-direction:column;align-items:center;gap:.2em;padding:.55em .2em;border-radius:12px;border:1px solid transparent}
+.p .n{color:var(--muted);font-size:.82em;font-family:var(--kufi)}
+.p .t{font-size:1.3em;font-weight:500}
+.p.sunrise .t{font-size:1.05em;color:var(--muted)}
+.p.on{border-color:var(--sand);background:color-mix(in srgb,var(--sand) 12%,transparent)}
+.p.on .n{color:var(--sand)}
+.p.past{opacity:.5}
+
+/* ---- end column: matches & weather ---- */
+.life-col{display:flex;flex-direction:column;gap:clamp(12px,2vh,26px);min-width:0}
+.life-col .wx{margin-top:auto}
+.teams .team{justify-content:flex-start}
+.hero{padding:1.1em 1.3em;display:flex;flex-direction:column;gap:.6em;position:relative;overflow:hidden}
+.hero .stripe{position:absolute;inset:0 auto 0 0;width:8px;background:linear-gradient(var(--c1),var(--c2))}
+.hero .row{display:flex;justify-content:space-between;align-items:center;gap:1em}
+.hero .vs{font-family:var(--kufi);font-size:1.9em;line-height:1.1}
+.hero .vs small{font-size:.5em;color:var(--muted);margin:0 .35em}
+.hero .cd{font-size:1.15em}
+.hero .score{font-family:var(--kufi);font-size:1.2em;color:var(--sand);margin:0 .3em}
+.badge{font-size:.72em;border:1px solid var(--line);border-radius:999px;padding:.2em .8em;color:var(--muted);white-space:nowrap}
+.badge.live{border-color:var(--live);color:var(--live);animation:pulse 1.6s infinite}
+@keyframes pulse{50%{opacity:.45}}
+
+.teams{display:grid;grid-template-columns:1fr 1fr;gap:clamp(12px,1.4vw,24px)}
+.team{padding:.9em 1em;display:flex;flex-direction:column;gap:.45em;min-width:0}
+.team h3{margin:0 0 .15em;font-family:var(--kufi);font-weight:500;font-size:1.05em;display:flex;gap:.5em;align-items:center}
+.dot{width:.75em;height:.75em;border-radius:50%;background:var(--c1);box-shadow:0 0 0 2px var(--c2) inset;flex:none}
+.m{display:flex;justify-content:space-between;gap:.6em;align-items:baseline;border-top:1px solid var(--line);padding-top:.45em}
+.m:first-of-type{border-top:0;padding-top:0}
+.m .o{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.m .o small{color:var(--muted);font-size:.8em;margin-inline-end:.3em}
+.m .w{color:var(--muted);font-size:.8em;text-align:end;white-space:nowrap}
+
+.wx{padding:1em 1.2em;display:grid;grid-template-columns:auto 1fr;gap:.4em 1.4em;align-items:center}
+.wx .now{display:flex;align-items:center;gap:.5em;grid-row:span 2}
+.wx .now svg{width:3.2em;height:3.2em}
+.wx .now .t{font-family:var(--kufi);font-size:3em;line-height:1}
+.wx .now .c{display:flex;flex-direction:column;gap:.1em}
+.wx .now .c b{font-weight:500}
+.wx .now .c span{color:var(--muted);font-size:.8em}
+.days{display:grid;grid-template-columns:repeat(7,1fr);gap:.2em;text-align:center}
+.days div{display:flex;flex-direction:column;align-items:center;gap:.1em;font-size:.85em}
+.days svg{width:1.4em;height:1.4em}
+.days .d{color:var(--muted);font-size:.85em}
+.days .lo{color:var(--muted)}
+.other{grid-column:2;color:var(--muted);font-size:.85em;display:flex;gap:1em;flex-wrap:wrap}
+.other b{color:var(--ink);font-weight:500}
+
+/* ---- rotating info card ---- */
+.info{padding:1em 1.2em;display:flex;flex-direction:column;gap:.55em;min-height:9.5em}
+.info .head{display:flex;justify-content:space-between;align-items:center}
+.info .dots{display:flex;gap:.35em}
+.info .dots i{width:.45em;height:.45em;border-radius:50%;background:var(--line)}
+.info .dots i.on{background:var(--sand)}
+.info .body{transition:opacity .6s}
+.tbl{width:100%;border-collapse:collapse;font-size:.92em}
+.tbl td{padding:.22em .3em;border-top:1px solid var(--line)}
+.tbl tr:first-child td{border-top:0}
+.tbl td.r{width:2em;color:var(--muted);text-align:center}
+.tbl td.n{text-align:end;color:var(--muted);width:3.5em}
+.tbl td.pt{text-align:end;width:3em;font-weight:600}
+.tbl tr.me td{color:var(--ink);background:color-mix(in srgb,var(--c1) 16%,transparent)}
+.tbl tr.gap td{color:var(--muted);text-align:center;border-top:0;padding:0;line-height:.8}
+.rem{display:flex;justify-content:space-between;gap:1em;border-top:1px solid var(--line);padding-block:.4em}
+.rem:first-child{border-top:0;padding-top:0}
+.rem .w{color:var(--sand);white-space:nowrap}
+.rem.today .w{color:var(--live)}
+.fx3{display:grid;grid-template-columns:repeat(3,1fr);gap:.8em;text-align:center}
+.fx3 div{display:flex;flex-direction:column;gap:.15em}
+.fx3 b{font-family:var(--kufi);font-size:1.7em;font-weight:500}
+.fx3 span{color:var(--muted);font-size:.8em}
+.arc-next .rm{font-family:var(--kufi);color:var(--sand);font-size:1.35em}
+
+/* ---- footer ---- */
+.foot{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;gap:2em;border-top:1px solid var(--line);padding-top:clamp(10px,1.6vh,20px)}
+.ayah{font-family:var(--quran);font-size:1.45em;line-height:1.7;min-width:0;flex:1;transition:opacity 1.2s}
+.ayah cite{font-family:var(--body);font-style:normal;color:var(--muted);font-size:.55em;margin-inline-start:.8em;white-space:nowrap}
+.mini{color:var(--muted);font-size:.85em;white-space:nowrap;display:flex;gap:1.2em}
+.up{color:#3fbf8a}.down{color:var(--live)}
+
+/* ---- adhan overlay ---- */
+.adhan{position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.4em;text-align:center;
+  background:radial-gradient(circle at 50% 45%,color-mix(in srgb,var(--sand) 25%,var(--sky-1)),var(--sky-1) 70%)}
+.adhan .a1{font-family:var(--kufi);color:var(--muted);font-size:2em}
+.adhan .a2{font-family:var(--kufi);font-size:clamp(60px,9vw,170px);line-height:1.05}
+.adhan .a3{font-size:1.6em;color:var(--sand)}
+
+@media (max-width:900px){
+  body{overflow:auto}
+  .wrap{height:auto;grid-template-columns:1fr}
+  .teams{grid-template-columns:1fr}
+  .prayers{grid-template-columns:repeat(3,1fr)}
+  .foot{flex-direction:column;align-items:flex-start}
+}
+@media (prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
+</style>
+
+</head><body>
+<div class="sky"></div>
+<div class="wrap" id="wrap" dir="rtl" lang="ar">
+  <section class="time-col">
+    <div>
+      <div class="clock"><span id="hm" class="num">--:--</span><small id="ampm"></small></div>
+      <div class="dates"><span id="greg"></span><span class="h" id="hijri"></span><span class="r" id="ramadan"></span></div>
+    </div>
+    <div class="arc-wrap">
+      <svg viewBox="-40 -10 680 260" aria-hidden="true">
+        <line x1="0" y1="230" x2="600" y2="230" stroke="var(--line)" stroke-width="2"/>
+        <path id="arcBase" d="M570 230 A270 200 0 0 0 30 230" fill="none" stroke="var(--line)" stroke-width="3" stroke-dasharray="2 9" stroke-linecap="round"/>
+        <path id="arcDone" d="M570 230 A270 200 0 0 0 30 230" fill="none" stroke="var(--sand)" stroke-width="3" stroke-linecap="round"/>
+        <g id="ticks"></g>
+        <g id="sunG"><circle id="sunHalo" r="22" fill="var(--sun)" opacity=".18"/><circle id="sunDot" r="11" fill="var(--sun)"/></g>
+      </svg>
+      <div class="arc-next">
+        <span class="rm" id="rmLine" hidden></span>
+        <span class="lbl">الصلاة القادمة</span>
+        <span class="n" id="nxName">—</span>
+        <span class="l" id="nxLeft"></span>
+        <span class="s" id="since"></span>
+      </div>
+    </div>
+    <div class="prayers" id="prayers"></div>
+  </section>
+
+  <section class="life-col">
+    <div class="hero card" id="hero" hidden></div>
+    <div class="teams" id="teams"></div>
+    <div class="info card" id="info" hidden><div class="head"><span class="lbl" id="infoTitle"></span><span class="dots" id="infoDots"></span></div><div class="body" id="infoBody"></div></div>
+    <div class="wx card" id="wx"><span class="lbl">الطقس يحتاج اتصال بالإنترنت، وبيظهر لما تفتح الصفحة على التلفزيون.</span></div>
+  </section>
+
+  <footer class="foot">
+    <div class="ayah" id="ayah"></div>
+    <div class="mini"><span id="btc"></span><span id="sunInfo"></span></div>
+  </footer>
+</div>
+<div class="adhan" id="adhan" hidden><div class="a1">حان الآن موعد أذان</div><div class="a2" id="adName"></div><div class="a3" id="adCity"></div></div>
+<div class="dim" id="dim"></div>
+
+<script>
+/* ===== الإعدادات ===== */
+const CONFIG = {
+  city: { name: "جدة", lat: 21.4858, lng: 39.1925 },
+  otherCity: { name: "القصيم", lat: 26.3260, lng: 43.9750 },
+  teams: [
+    { id: 2276, name: "الاتحاد", c1: "#f5c518", c2: "#111" },
+    { id: 8346, name: "الأهلي",  c1: "#0b8a3e", c2: "#fff" }
+  ],
+  tz: 3,
+  use24h: false,
+  nightDim: true,        // تعتيم الشاشة بعد العشاء بساعتين إلى قبل الفجر بنصف ساعة
+  adhanOverlay: true,    // شاشة كاملة وقت الأذان لمدة ٥ دقائق
+  ayah: true,            // آية كل ساعة (من alquran.cloud)
+
+  // صوت الأذان: ضع رابط ملف mp3 لأذان تحبه (أو اسم ملف بجانب الصفحة مثل "adhan.mp3").
+  // إذا تركته فاضي، تسمع نغمة تنبيه قصيرة بدل الأذان. المتصفح يسمح بالصوت بعد أول ضغطة بالريموت على الصفحة.
+  adhanSound: false,
+  adhanAudioUrl: "",
+
+  // تذكيرات العائلة — طريقتين، تقدر تستخدم الاثنتين:
+  // ١) جدول Google Sheets منشور بصيغة CSV (تعدّله من جوالك). الأعمدة: التاريخ | الوقت | التذكير | سنوي
+  //    التاريخ بصيغة 2026-10-25 أو 10-25 للمناسبات السنوية، والوقت اختياري مثل 19:30
+  remindersSheetCsv: "reminders.csv",
+  // ٢) قائمة ثابتة هنا
+  reminders: [
+    // { date: "03-14", title: "عيد ميلاد ...", yearly: true },
+    // { date: "2026-10-30", time: "20:00", title: "عشاء عند الأهل" },
+  ],
+
+  rotateSeconds: 15      // مدة عرض كل لوحة (الترتيب، التذكيرات، الذهب والعملات)
+};
+
+const AR = (n,o) => new Intl.NumberFormat('ar-SA-u-nu-arab',o).format(n);
+const $ = id => document.getElementById(id);
+const PRAYERS = [["fajr","الفجر"],["sunrise","الشروق"],["dhuhr","الظهر"],["asr","العصر"],["maghrib","المغرب"],["isha","العشاء"]];
+const FARD = PRAYERS.filter(p=>p[0]!=='sunrise');
+
+/* ---------- Hijri / Ramadan ---------- */
+const hijriParts = new Intl.DateTimeFormat('en-u-ca-islamic-umalqura',{day:'numeric',month:'numeric'});
+const hp = d => Object.fromEntries(hijriParts.formatToParts(d).map(x=>[x.type,x.value]));
+const isRamadan = d => hp(d).month==='9';
+function daysToRamadan(d){ const x=new Date(d.getFullYear(),d.getMonth(),d.getDate(),12);
+  for(let i=0;i<400;i++){const p=hp(x); if(p.month==='9'&&p.day==='1') return i; x.setDate(x.getDate()+1);} return null; }
+
+/* ---------- Prayer times: Umm al-Qura (local calc, replaced by Aladhan when online) ---------- */
+function calcTimes(date,lat,lng,tz,ramadan){
+  const D=Math.PI/180,R=180/Math.PI; let Y=date.getFullYear(),M=date.getMonth()+1; const d=date.getDate();
+  if(M<=2){Y-=1;M+=12} const A=Math.floor(Y/100),B=2-A+Math.floor(A/4);
+  const JD=Math.floor(365.25*(Y+4716))+Math.floor(30.6001*(M+1))+d+B-1524.5-lng/360, fix=h=>((h%24)+24)%24;
+  function sun(jd){const n=jd-2451545,g=(357.529+0.98560028*n)%360,q=(280.459+0.98564736*n)%360,
+    L=(q+1.915*Math.sin(g*D)+0.02*Math.sin(2*g*D))%360,e=23.439-0.00000036*n,
+    RA=Math.atan2(Math.cos(e*D)*Math.sin(L*D),Math.cos(L*D))*R/15,decl=Math.asin(Math.sin(e*D)*Math.sin(L*D))*R;
+    let EqT=q/15-fix(RA); EqT=fix(EqT+12)-12; return {decl,EqT}}
+  const noon=t=>fix(12-sun(JD+t/24).EqT);
+  const ha=(alt,t)=>{const{decl}=sun(JD+t/24);return R*Math.acos((Math.sin(alt*D)-Math.sin(decl*D)*Math.sin(lat*D))/(Math.cos(decl*D)*Math.cos(lat*D)))/15};
+  const asrAlt=t=>{const{decl}=sun(JD+t/24);return R*Math.atan(1/(1+Math.tan(Math.abs(lat-decl)*D)))};
+  let t={fajr:5,sunrise:6,dhuhr:12,asr:13,maghrib:18};
+  for(let i=0;i<2;i++) t={fajr:noon(t.fajr)-ha(-18.5,t.fajr),sunrise:noon(t.sunrise)-ha(-0.833,t.sunrise),dhuhr:noon(t.dhuhr),asr:noon(t.asr)+ha(asrAlt(t.asr),t.asr),maghrib:noon(t.maghrib)+ha(-0.833,t.maghrib)};
+  const off=tz-lng/15,o={}; for(const k in t) o[k]=Math.round((t[k]+off)*60); o.isha=o.maghrib+(ramadan?120:90); return o;
+}
+const cache={};
+async function timesFor(date){
+  const key=date.toDateString(); if(cache[key]) return cache[key];
+  const c=CONFIG.city; cache[key]=calcTimes(date,c.lat,c.lng,CONFIG.tz,isRamadan(date));
+  try{
+    const ds=`${String(date.getDate()).padStart(2,'0')}-${String(date.getMonth()+1).padStart(2,'0')}-${date.getFullYear()}`;
+    const tm=(await (await fetch(`https://api.aladhan.com/v1/timings/${ds}?latitude=${c.lat}&longitude=${c.lng}&method=4`)).json()).data.timings;
+    const m=s=>{const[h,mm]=s.split(':').map(Number);return h*60+mm};
+    cache[key]={fajr:m(tm.Fajr),sunrise:m(tm.Sunrise),dhuhr:m(tm.Dhuhr),asr:m(tm.Asr),maghrib:m(tm.Maghrib),isha:m(tm.Isha)};
+  }catch(e){}
+  return cache[key];
+}
+function fmtMin(m){ m=((m%1440)+1440)%1440; let h=Math.floor(m/60),mm=m%60;
+  if(CONFIG.use24h) return AR(h,{minimumIntegerDigits:2,useGrouping:false})+':'+AR(mm,{minimumIntegerDigits:2});
+  const s=h<12?'ص':'م'; return `${AR(h%12||12)}:${AR(mm,{minimumIntegerDigits:2})} ${s}`; }
+function fmtDur(min){ const h=Math.floor(min/60),m=min%60,p=[];
+  if(h) p.push(h===1?'ساعة':h===2?'ساعتين':`${AR(h)} ${h<=10?'ساعات':'ساعة'}`);
+  if(m||!h) p.push(m===1?'دقيقة':m===2?'دقيقتين':`${AR(m)} ${m>=3&&m<=10?'دقائق':'دقيقة'}`);
+  return p.join(' و'); }
+
+/* ---------- Sun-path arc ---------- */
+const arc = $('arcBase'), arcLen = () => arc.getTotalLength();
+function arcPoint(f){ const L=arcLen(); return arc.getPointAtLength(Math.max(0,Math.min(1,f))*L); }
+function drawTicks(t){
+  const span=t.isha-t.fajr, g=$('ticks'); g.innerHTML='';
+  PRAYERS.forEach(([k,n])=>{ const p=arcPoint((t[k]-t.fajr)/span);
+    const dx=p.x-300, dy=p.y-230, len=Math.hypot(dx,dy)||1, lx=p.x+dx/len*34, ly=p.y+dy/len*30+6;
+    g.insertAdjacentHTML('beforeend',`<circle cx="${p.x}" cy="${p.y}" r="5" fill="var(--sky-1)" stroke="var(--muted)" stroke-width="2"/>
+      <text x="${lx}" y="${ly}" text-anchor="middle" font-size="17" fill="var(--muted)" font-family="Reem Kufi, sans-serif">${n}</text>`); });
+}
+
+/* ---------- Sky mode + night dim ---------- */
+function setSky(t,nowMin){
+  let sky='night';
+  if(nowMin>=t.fajr && nowMin<t.sunrise+20) sky='dawn';
+  else if(nowMin>=t.sunrise+20 && nowMin<t.maghrib-20) sky='day';
+  else if(nowMin>=t.maghrib-20 && nowMin<t.maghrib+25) sky='dawn';
+  if(document.documentElement.dataset.sky!==sky) document.documentElement.dataset.sky=sky;
+  const dim = CONFIG.nightDim && (nowMin>=t.isha+120 || nowMin<t.fajr-30);
+  $('dim').style.opacity = dim ? .45 : 0;
+}
+
+/* ---------- Main tick ---------- */
+const gregFmt=new Intl.DateTimeFormat('ar-SA-u-ca-gregory-nu-arab',{weekday:'long',day:'numeric',month:'long'});
+const hijriFmt=new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura-nu-arab',{day:'numeric',month:'long',year:'numeric'});
+let lastDay='', lastTicks='', playedFor='';
+async function tick(){
+  const now=new Date(), h=now.getHours(), m=now.getMinutes();
+  if(CONFIG.use24h){ $('hm').textContent=AR(h,{minimumIntegerDigits:2,useGrouping:false})+':'+AR(m,{minimumIntegerDigits:2}); $('ampm').textContent=''; }
+  else { $('hm').textContent=AR(h%12||12)+':'+AR(m,{minimumIntegerDigits:2}); $('ampm').textContent=h<12?'ص':'م'; }
+  if(now.toDateString()!==lastDay){
+    lastDay=now.toDateString(); $('greg').textContent=gregFmt.format(now); $('hijri').textContent=hijriFmt.format(now);
+    const dr=daysToRamadan(now);
+    $('ramadan').textContent = isRamadan(now)?'رمضان مبارك':dr==null?'':`باقي على رمضان ${AR(dr)} ${dr>10?'يومًا':'أيام'}`;
+  }
+  const t=await timesFor(now), nowMin=h*60+m+now.getSeconds()/60;
+  const key=JSON.stringify(t); if(key!==lastTicks){ lastTicks=key; drawTicks(t); }
+  setSky(t,nowMin);
+
+  // next / previous obligatory prayer
+  let idx=FARD.findIndex(([k])=>t[k]>nowMin), nextKey, nextMin, prevName, prevMin;
+  if(idx===-1){ const tm=new Date(now); tm.setDate(tm.getDate()+1); nextKey='fajr'; nextMin=(await timesFor(tm)).fajr+1440; prevName='العشاء'; prevMin=t.isha; }
+  else { nextKey=FARD[idx][0]; nextMin=t[nextKey];
+    if(idx>0){ prevName=FARD[idx-1][1]; prevMin=t[FARD[idx-1][0]]; }
+    else { const yd=new Date(now); yd.setDate(yd.getDate()-1); prevName='العشاء'; prevMin=(await timesFor(yd)).isha-1440; } }
+  $('nxName').textContent=`${FARD.find(p=>p[0]===nextKey)[1]} · ${fmtMin(nextMin)}`;
+  $('nxLeft').textContent='باقي '+fmtDur(Math.max(0,Math.ceil(nextMin-nowMin)));
+  $('since').textContent=`مضى على ${prevName} ${fmtDur(Math.floor(nowMin-prevMin))}`;
+
+  // Ramadan mode: countdown to iftar (Maghrib) by day, to imsak (10 min before Fajr) by night
+  const rl=$('rmLine');
+  if(isRamadan(now)){
+    let label,target;
+    if(nowMin>=t.fajr && nowMin<t.maghrib){ label='الإفطار'; target=t.maghrib; }
+    else { const tf = nowMin>=t.maghrib ? (await timesFor(new Date(now.getTime()+864e5))).fajr+1440 : t.fajr; label='الإمساك'; target=tf-10; }
+    rl.hidden=false; rl.textContent=`${label} ${fmtMin(target)} · باقي ${fmtDur(Math.max(0,Math.ceil(target-nowMin)))}`;
+  } else rl.hidden=true;
+
+  $('prayers').innerHTML=PRAYERS.map(([k,n])=>{
+    const on=k===nextKey, past=!on && (idx===-1 || t[k]<nowMin) && !(idx===-1&&k==='fajr');
+    return `<div class="p ${k} ${on?'on':''} ${past?'past':''}"><span class="n">${n}</span><span class="t num">${fmtMin(t[k])}</span></div>`; }).join('');
+
+  // sun / moon on the arc
+  const f=(nowMin-t.fajr)/(t.isha-t.fajr), night=f<0||f>1, p=arcPoint(night?(f<0?0:1):f);
+  $('sunG').setAttribute('transform',`translate(${p.x},${p.y})`);
+  $('sunDot').setAttribute('fill', night?'var(--muted)':'var(--sun)');
+  $('sunHalo').setAttribute('opacity', night?0:.18);
+  const L=arcLen(); $('arcDone').style.strokeDasharray=`${L*Math.max(0,Math.min(1,f))} ${L}`;
+  $('sunInfo').textContent=`الشروق ${fmtMin(t.sunrise)} · الغروب ${fmtMin(t.maghrib)}`;
+
+  // adhan overlay: first 5 minutes after each prayer
+  if(CONFIG.adhanOverlay){
+    const hit=FARD.find(([k])=>nowMin>=t[k]&&nowMin<t[k]+5);
+    $('adhan').hidden=!hit; if(hit){ $('adName').textContent=hit[1]; $('adCity').textContent=`${fmtMin(t[hit[0]])} · ${CONFIG.city.name}`; }
+    const tag=now.toDateString()+(hit?hit[0]:''); if(hit && CONFIG.adhanSound && playedFor!==tag){ playedFor=tag; playAdhan(); }
+  }
+}
+
+/* ---------- Weather (Open-Meteo) ---------- */
+const IC={
+  sun:'<svg viewBox="0 0 24 24" fill="none" stroke="var(--sun)" stroke-width="2"><circle cx="12" cy="12" r="4.5" fill="var(--sun)"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>',
+  part:'<svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="4" fill="var(--sun)"/><path d="M8 19h9a4 4 0 0 0 0-8 5 5 0 0 0-9.6 1.5A3.3 3.3 0 0 0 8 19z" fill="var(--muted)"/></svg>',
+  cloud:'<svg viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><path d="M7 18h10a4 4 0 0 0 .4-8 6 6 0 0 0-11.5 1.6A3.3 3.3 0 0 0 7 18z"/></svg>',
+  rain:'<svg viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="2"><path d="M7 15h10a4 4 0 0 0 .4-8 6 6 0 0 0-11.5 1.6A3.3 3.3 0 0 0 7 15z" stroke="var(--muted)"/><path d="M8 18l-1 3M12 18l-1 3M16 18l-1 3"/></svg>',
+  storm:'<svg viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><path d="M7 15h10a4 4 0 0 0 .4-8 6 6 0 0 0-11.5 1.6A3.3 3.3 0 0 0 7 15z"/><path d="M12 15l-2 4h3l-2 4" stroke="var(--sun)"/></svg>',
+  dust:'<svg viewBox="0 0 24 24" fill="none" stroke="var(--sand)" stroke-width="2"><path d="M3 8h12a3 3 0 1 0-3-3M3 12h17a3 3 0 1 1-3 3M3 16h9"/></svg>',
+  moon:'<svg viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="var(--muted)"/></svg>'
+};
+const icon=(c,n)=>c===0?(n?IC.moon:IC.sun):c<=2?IC.part:c===3?IC.cloud:(c===45||c===48)?IC.dust:c>=95?IC.storm:c>=51?IC.rain:IC.cloud;
+const DESC=c=>c===0?'صافي':c<=2?'غائم جزئيًا':c===3?'غائم':(c===45||c===48)?'ضباب':c>=95?'عواصف رعدية':c>=51?'أمطار':'غائم';
+const dayFmt=new Intl.DateTimeFormat('ar-SA-u-ca-gregory',{weekday:'short'});
+async function loadWeather(){
+  try{
+    const q=c=>`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=Asia%2FRiyadh&forecast_days=7`;
+    const [a,b]=await Promise.all([q(CONFIG.city),q(CONFIG.otherCity)].map(u=>fetch(u).then(r=>r.json())));
+    const c=a.current;
+    $('wx').innerHTML=`<div class="now">${icon(c.weather_code,!c.is_day)}<span class="t num">${AR(Math.round(c.temperature_2m))}°</span>
+      <span class="c"><b>${CONFIG.city.name} · ${DESC(c.weather_code)}</b><span>الإحساس ${AR(Math.round(c.apparent_temperature))}° · الرطوبة ${AR(c.relative_humidity_2m)}٪</span></span></div>
+      <div class="days">${a.daily.time.map((d,i)=>`<div><span class="d">${i?dayFmt.format(new Date(d+'T12:00')):'اليوم'}</span>${icon(a.daily.weather_code[i])}<b class="num">${AR(Math.round(a.daily.temperature_2m_max[i]))}°</b><span class="lo num">${AR(Math.round(a.daily.temperature_2m_min[i]))}°</span></div>`).join('')}</div>
+      <div class="other">${CONFIG.otherCity.name}: <b class="num">${AR(Math.round(b.current.temperature_2m))}°</b> الآن · العظمى اليوم <b class="num">${AR(Math.round(b.daily.temperature_2m_max[0]))}°</b></div>`;
+  }catch(e){}
+}
+
+/* ---------- Matches (ESPN, all competitions) ---------- */
+const TEAM_AR={"Al Ittihad":"الاتحاد","Al Ahli":"الأهلي","Al Hilal":"الهلال","Al Nassr":"النصر","Al Shabab":"الشباب","Al Ettifaq":"الاتفاق","Al Taawoun":"التعاون","Al Fateh":"الفتح","Al Fayha":"الفيحاء","Al Feiha":"الفيحاء","Al Khaleej":"الخليج","Al Riyadh":"الرياض","Al Okhdood":"الأخدود","Al Akhdoud":"الأخدود","Al Qadsiah":"القادسية","Al Kholood":"الخلود","Al Hazem":"الحزم","Al Najma":"النجمة","Damac":"ضمك","Al Wehda":"الوحدة","Al Raed":"الرائد","Al Orobah":"العروبة","Abha":"أبها","Al Diriyah":"الدرعية","Neom SC":"نيوم","NEOM":"نيوم","Al Faisaly":"الفيصلي","Al Ula":"العلا","Al Tai":"الطائي","Al Batin":"الباطن","Al Jabalain":"الجبلين","Al Zulfi":"الزلفي","Al Adalah":"العدالة","Al Ain":"العين","Al Sadd":"السد","Al-Gharafa":"الغرافة","Al Gharafa":"الغرافة","Al-Shamal":"الشمال","Al Wahda":"الوحدة الإماراتي","Shabab Al-Ahli":"شباب الأهلي","Sharjah":"الشارقة","Al Duhail":"الدحيل","Al Rayyan":"الريان","Persepolis":"برسبوليس","Esteghlal":"استقلال طهران","Pakhtakor":"باختاكور","Neftchi Fergana":"نفطتشي فرغانة","Ulsan HD":"أولسان","Vissel Kobe":"فيسل كوبي","Buriram United":"بوريرام","Shanghai Port":"شنغهاي بورت"};
+const LG=[[/pro league/i,"دوري روشن"],[/champions league elite/i,"أبطال آسيا للنخبة"],[/champions league two/i,"أبطال آسيا ٢"],[/king'?s cup/i,"كأس الملك"],[/super cup/i,"السوبر السعودي"],[/club world cup/i,"كأس العالم للأندية"],[/friendl/i,"ودية"]];
+const lgAr=n=>(LG.find(([r])=>r.test(n||''))||[0,n||''])[1];
+const teamAr=t=>TEAM_AR[t?.displayName]||TEAM_AR[t?.shortDisplayName]||t?.shortDisplayName||t?.displayName||'';
+const fxDay=new Intl.DateTimeFormat('ar-SA-u-ca-gregory-nu-arab',{weekday:'long',day:'numeric',month:'short',timeZone:'Asia/Riyadh'});
+const fxTime=new Intl.DateTimeFormat('ar-SA-u-ca-gregory-nu-arab',{hour:'numeric',minute:'2-digit',hour12:true,timeZone:'Asia/Riyadh'});
+const ksaDay=d=>new Date(d.toLocaleString('en-US',{timeZone:'Asia/Riyadh'})).toDateString();
+function rel(d){ if(ksaDay(d)===ksaDay(new Date())) return 'اليوم'; if(ksaDay(d)===ksaDay(new Date(Date.now()+864e5))) return 'بكرة'; return fxDay.format(d); }
+let matchData=[];
+async function loadMatches(){
+  matchData=await Promise.all(CONFIG.teams.map(async team=>{
+    try{
+      const j=await (await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/all/teams/${team.id}/schedule?fixture=true`)).json();
+      const evs=(j.events||[]).filter(e=>{const s=e.competitions?.[0]?.status?.type?.state;return s==='in'||(s!=='post'&&new Date(e.date)>Date.now()-3*3600e3)})
+        .sort((a,b)=>new Date(a.date)-new Date(b.date)).map(e=>{
+          const c=e.competitions[0], us=c.competitors.find(x=>String(x.team?.id)===String(team.id))||c.competitors[0], op=c.competitors.find(x=>x!==us);
+          const sc=x=>x?.score?.displayValue??x?.score??'';
+          return {date:new Date(e.date),home:us.homeAway==='home',opp:teamAr(op?.team),lg:lgAr(e.league?.name||e.season?.name),state:c.status?.type?.state,detail:c.status?.type?.shortDetail||'',us:sc(us),them:sc(op),timeValid:e.timeValid!==false};
+        });
+      return {team,evs,ok:true};
+    }catch(e){ return {team,evs:[],ok:false}; }
+  }));
+  renderMatches();
+}
+function renderMatches(){
+  if(!matchData.length) return;
+  const now=Date.now();
+  // match-day hero: a live match, or one kicking off today
+  let hero=null;
+  for(const {team,evs} of matchData){ const e=evs[0]; if(!e) continue;
+    if(e.state==='in'||ksaDay(e.date)===ksaDay(new Date())) if(!hero||e.state==='in') hero={team,e}; }
+  const H=$('hero');
+  if(hero){ const {team,e}=hero, live=e.state==='in', mins=Math.round((e.date-now)/6e4);
+    H.hidden=false; H.style.setProperty('--c1',team.c1); H.style.setProperty('--c2',team.c2);
+    H.innerHTML=`<div class="stripe"></div>
+      <div class="row"><span class="lbl">${live?'مباراة الآن':'يوم المباراة'} · ${e.lg}</span><span class="badge ${live?'live':''}">${live?'مباشر '+e.detail:fxTime.format(e.date)}</span></div>
+      <div class="row"><span class="vs">${live?`${team.name} <span class="score num">${AR(+e.us||0)} - ${AR(+e.them||0)}</span> ${e.opp}`:`${team.name}<small>${e.home?'ضد':'عند'}</small>${e.opp}`}</span></div>
+      ${live?'':`<div class="cd">${mins>0?'تبدأ بعد '+fmtDur(mins):'على وشك البداية'}</div>`}`;
+  } else H.hidden=true;
+  $('teams').innerHTML=matchData.map(({team,evs,ok})=>{
+    const list=evs.filter(e=>!hero||e!==hero.e).slice(0,hero?2:3);
+    const rows=!ok?'<div class="lbl">الجدول يحتاج اتصال بالإنترنت.</div>':list.length?list.map(e=>`<div class="m"><span class="o"><small>${e.home?'ضد':'عند'}</small>${e.opp}</span><span class="w">${rel(e.date)} · ${e.timeValid?fxTime.format(e.date):'لم يحدد'}<br>${e.lg}</span></div>`).join(''):'<div class="lbl">ما فيه مباريات قادمة.</div>';
+    return `<div class="team card" style="--c1:${team.c1};--c2:${team.c2}"><h3><span class="dot"></span>${team.name}</h3>${rows}</div>`; }).join('');
+}
+
+/* ---------- Verse of the hour (alquran.cloud, Uthmani text) ---------- */
+async function loadAyah(){
+  if(!CONFIG.ayah) return;
+  try{
+    for(let i=0;i<6;i++){
+      const n=1+Math.floor(Math.random()*6236);
+      const d=(await (await fetch(`https://api.alquran.cloud/v1/ayah/${n}/quran-uthmani`)).json()).data;
+      if(d.text.length<=140){ const el=$('ayah'); el.style.opacity=0;
+        setTimeout(()=>{ el.innerHTML=`﴿${d.text}﴾<cite>${d.surah.name} · ${AR(d.numberInSurah)}</cite>`; el.style.opacity=1; },1200); return; }
+    }
+  }catch(e){}
+}
+
+/* ---------- Bitcoin ---------- */
+async function loadBTC(){
+  try{ const j=(await (await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true')).json()).bitcoin;
+    $('btc').innerHTML=`₿ ${AR(Math.round(j.usd))}$ <span class="${j.usd_24h_change<0?'down':'up'}">${j.usd_24h_change<0?'▼':'▲'}${AR(Math.abs(j.usd_24h_change),{maximumFractionDigits:1})}٪</span>`; }catch(e){}
+}
+
+/* ---------- Adhan sound ---------- */
+let audioCtx=null, adhanEl=null;
+function unlockAudio(){
+  try{ audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)(); audioCtx.resume(); }catch(e){}
+  if(CONFIG.adhanAudioUrl && !adhanEl){ adhanEl=new Audio(CONFIG.adhanAudioUrl); adhanEl.preload='auto'; }
+}
+document.addEventListener('click',unlockAudio); document.addEventListener('keydown',unlockAudio);
+function chime(){
+  if(!audioCtx) return; const t0=audioCtx.currentTime;
+  [[659.25,0],[880,0.5],[987.77,1.0],[880,1.6]].forEach(([f,d])=>{
+    const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='sine'; o.frequency.value=f;
+    g.gain.setValueAtTime(0,t0+d); g.gain.linearRampToValueAtTime(.25,t0+d+.05); g.gain.exponentialRampToValueAtTime(.001,t0+d+1.4);
+    o.connect(g).connect(audioCtx.destination); o.start(t0+d); o.stop(t0+d+1.5); });
+}
+function playAdhan(){
+  if(adhanEl){ adhanEl.currentTime=0; adhanEl.play().catch(chime); } else chime();
+}
+
+/* ---------- Rotating info: standings · reminders · gold & currency ---------- */
+const panels={};
+async function loadStandings(){
+  try{
+    const j=await (await fetch('https://site.api.espn.com/apis/v2/sports/soccer/ksa.1/standings')).json();
+    const en=(j.children?.[0]?.standings?.entries||[]).map(e=>{const st=n=>e.stats.find(x=>x.name===n)?.displayValue;
+      return {id:e.team.id,name:teamAr(e.team),rank:+st('rank'),gp:st('gamesPlayed'),pts:st('points')}}).sort((a,b)=>a.rank-b.rank);
+    if(!en.length) return;
+    const mine=CONFIG.teams.map(t=>String(t.id)); const keep=new Set();
+    en.forEach((e,i)=>{ if(i<3) keep.add(i); if(mine.includes(String(e.id))){ keep.add(i-1); keep.add(i); keep.add(i+1);} });
+    let rows='',last=-1;
+    [...keep].filter(i=>i>=0&&i<en.length).sort((a,b)=>a-b).forEach(i=>{ const e=en[i];
+      if(last>=0 && i>last+1) rows+='<tr class="gap"><td colspan="4">⋯</td></tr>';
+      const tm=CONFIG.teams.find(t=>String(t.id)===String(e.id));
+      rows+=`<tr class="${tm?'me':''}" ${tm?`style="--c1:${tm.c1}"`:''}><td class="r num">${AR(e.rank)}</td><td>${e.name}</td><td class="n num">${AR(+e.gp)} لعب</td><td class="pt num">${AR(+e.pts)}</td></tr>`; last=i; });
+    panels.standings={title:'ترتيب دوري روشن',html:`<table class="tbl">${rows}</table>`};
+  }catch(e){}
+}
+function parseCSV(txt){
+  const out=[]; let row=[],cur='',q=false;
+  for(let i=0;i<txt.length;i++){ const ch=txt[i];
+    if(q){ if(ch==='"'&&txt[i+1]==='"'){cur+='"';i++} else if(ch==='"') q=false; else cur+=ch; }
+    else if(ch==='"') q=true; else if(ch===','){row.push(cur);cur=''} else if(ch==='\n'){row.push(cur);out.push(row);row=[];cur=''} else if(ch!=='\r') cur+=ch; }
+  if(cur||row.length){row.push(cur);out.push(row)} return out;
+}
+const remFmt=new Intl.DateTimeFormat('ar-SA-u-ca-gregory-nu-arab',{weekday:'long',day:'numeric',month:'long'});
+async function loadReminders(){
+  let list=[...CONFIG.reminders];
+  if(CONFIG.remindersSheetCsv){ try{
+    const rows=parseCSV(await (await fetch(CONFIG.remindersSheetCsv+(CONFIG.remindersSheetCsv.includes("?")?"&":"?")+"t="+Date.now())).text()).slice(1);
+    rows.forEach(r=>{ if(r[0]&&r[2]) list.push({date:r[0].trim(),time:(r[1]||'').trim(),title:r[2].trim(),yearly:/نعم|yes|1|true/i.test(r[3]||'')||/^\d{1,2}-\d{1,2}$/.test(r[0].trim())}); });
+  }catch(e){} }
+  const today=new Date(); today.setHours(0,0,0,0);
+  const items=list.map(r=>{ let d;
+    const m=r.date.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/), y=r.date.match(/^(\d{1,2})-(\d{1,2})$/);
+    if(m) d=new Date(+m[1],+m[2]-1,+m[3]);
+    else if(y){ d=new Date(today.getFullYear(),+y[1]-1,+y[2]); if(d<today) d.setFullYear(d.getFullYear()+1); }
+    else return null;
+    return {...r,d,days:Math.round((d-today)/864e5)}; }).filter(x=>x&&x.days>=0&&x.days<=30).sort((a,b)=>a.d-b.d).slice(0,4);
+  if(!items.length){ delete panels.reminders; return; }
+  panels.reminders={title:'تذكيرات العائلة',html:items.map(r=>{
+    const when=r.days===0?'اليوم':r.days===1?'بكرة':r.days<=6?remFmt.format(r.d).split('،')[0]:`بعد ${AR(r.days)} ${r.days<=10?'أيام':'يومًا'}`;
+    const tm=r.time?` · ${fmtMin(+r.time.split(':')[0]*60+ +(r.time.split(':')[1]||0))}`:'';
+    return `<div class="rem ${r.days===0?'today':''}"><span>${r.title}</span><span class="w">${when}${tm}</span></div>`; }).join('')};
+}
+async function loadMarkets(){
+  try{
+    const [g,fx]=await Promise.all([fetch('https://api.gold-api.com/price/XAU').then(r=>r.json()), fetch('https://open.er-api.com/v6/latest/USD').then(r=>r.json()).catch(()=>null)]);
+    const sar=fx?.rates?.SAR||3.75, eur=fx?.rates?.EUR, g24=g.price/31.1034768*sar, g21=g24*21/24;
+    panels.markets={title:'الذهب والعملات بالريال',html:`<div class="fx3">
+      <div><b class="num">${AR(Math.round(g24))}</b><span>جرام ذهب عيار ٢٤</span></div>
+      <div><b class="num">${AR(Math.round(g21))}</b><span>جرام ذهب عيار ٢١</span></div>
+      <div><b class="num">${AR(sar,{maximumFractionDigits:2})}</b><span>الدولار${eur?` · اليورو ${AR(sar/eur,{maximumFractionDigits:2})}`:''}</span></div></div>`};
+  }catch(e){}
+}
+let infoIdx=0;
+function rotateInfo(){
+  const keys=['standings','reminders','markets'].filter(k=>panels[k]); const box=$('info');
+  if(!keys.length){ box.hidden=true; return; } box.hidden=false;
+  infoIdx=(infoIdx+1)%keys.length; const k=keys[infoIdx], body=$('infoBody');
+  body.style.opacity=0;
+  setTimeout(()=>{ $('infoTitle').textContent=panels[k].title; body.innerHTML=panels[k].html;
+    $('infoDots').innerHTML=keys.map((x,i)=>`<i class="${i===infoIdx?'on':''}"></i>`).join(''); body.style.opacity=1; },400);
+}
+
+/* ---------- TV care: wake lock, idle cursor, fullscreen, burn-in shift ---------- */
+async function wake(){ try{ await navigator.wakeLock?.request('screen'); }catch(e){} }
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') wake(); });
+let idleT; document.addEventListener('mousemove',()=>{ document.body.classList.remove('idle'); clearTimeout(idleT); idleT=setTimeout(()=>document.body.classList.add('idle'),3000); });
+document.addEventListener('click',()=>document.documentElement.requestFullscreen?.().catch(()=>{}));
+setInterval(()=>{ $('wrap').style.transform=`translate(${Math.round(Math.random()*8-4)}px,${Math.round(Math.random()*8-4)}px)`; }, 5*60*1000);
+
+tick(); setInterval(tick,1000);
+loadWeather(); setInterval(loadWeather,30*60e3);
+loadMatches(); setInterval(loadMatches,2*60e3); setInterval(renderMatches,30e3);
+loadAyah(); setInterval(loadAyah,60*60e3);
+loadBTC(); setInterval(loadBTC,5*60e3);
+Promise.all([loadStandings(),loadReminders(),loadMarkets()]).then(()=>{ infoIdx=-1; rotateInfo(); });
+setInterval(rotateInfo,CONFIG.rotateSeconds*1000);
+setInterval(loadStandings,30*60e3); setInterval(loadReminders,10*60e3); setInterval(loadMarkets,15*60e3);
+wake();
+</script>
+</body></html>
